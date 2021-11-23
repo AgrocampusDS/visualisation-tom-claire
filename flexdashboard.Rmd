@@ -1,6 +1,6 @@
 ---
-title: "Un joli titre pour le dashboard"
-author: "Marie-Pierre Etienne"
+title: "Elections présidentielles de 2017, comment expliquer l'abstention ? "
+author: "Tom-Hadrian SY & Claire GIRAUD"
 output: 
   flexdashboard::flex_dashboard:
     theme: bootstrap
