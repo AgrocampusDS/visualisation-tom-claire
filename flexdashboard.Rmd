@@ -1,5 +1,5 @@
 ---
-title: "Elections présidentielles de 2017, comment expliquer l'abstention ? "
+title: "Elections présidentielles de 2022 : quelle abstention peut-on prévoir ?  "
 author: "Tom-Hadrian SY & Claire GIRAUD"
 output: 
   flexdashboard::flex_dashboard:
@@ -7,8 +7,7 @@ output:
     orientation: columns
     vertical_layout: fill
     navbar:
-      - { title: "Moodle", href: "https://tice.agrocampus-ouest.fr/course/view.php?id=6726", align: left }
-      - { icon: "fa-twitter", href: "https://twitter.com/marie_etienne", align: right }
+      - { title: "Moodle", href: "https://tice.agrocampus-ouest.fr/course/view.php?id=6726", align: right }
       - { icon: "fa-linkedin", href: "https://www.linkedin.com/in/marie-etienne-818a7115/", align: right }
 params:
   setup_path: ../resources/
@@ -16,68 +15,165 @@ params:
 
 <style>                     
 .navbar {
-  background-color:#46ACC8;
-  border-color:#46ACC8;
+  background-color:#FFC300;
+  border-color:#F5B041;
 }
 .navbar-brand {
 color:black!important;
 }
 
-
-</style>   
+</style>  
 
 
 ```{r setup, include=FALSE}
-library(flexdashboard)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r lib, include=FALSE}
+library(sf)
 library(tidyverse)
+library(tidyr)
+library(viridis)
 library(ggplot2)
+library(raster)
+library(cowplot)
 library(plotly)
-```
-
-Column {data-width=650}
------------------------------------------------------------------------
-
-### An easy solution for dashboard
-
-```{r, echo = TRUE}
-#install.package('flexdasboard')
-#rmarkdown::draft("dashboard.Rmd", template = "flex_dashboard", package = "flexdashboard")
-```
-
-The [flexdashboard website](https://rmarkdown.rstudio.com/flexdashboard/index.html) provides multiple advanced examples.
-
-### Some static graph
-
-```{r data, eval = TRUE, echo = FALSE, results='hide', message = FALSE, warning=FALSE}
-n <- 100
-dta <- tibble(size = round(rnorm(n, mean = 0, sd =10),2), 
-           color = sample(x= c('Blue', 'Yellow'), size = n, replace = TRUE))
-
+library(stringi)
+library(grid)
+library(gridExtra)
 ```
 
 
-```{r graph_static,  echo = FALSE,  message = FALSE, warning=FALSE}
-p1 <- dta %>% ggplot() +
-  aes(x=color, y = size) +
-  geom_boxplot(aes(fill= color))
-p1
+```{r, include=FALSE}
+# importation du shapefile des départements
+dpt_shape <-  st_read(dsn = 'In/contour-des-departements.geojson',
+                      quiet=TRUE)
 ```
 
-Column {.tabset .tabset-fade}
------------------------------------------------------------------------
+```{r data 2017, include=FALSE}
+# importation du jeu de données pour 2017
+ele_17 <- read.csv("In/Presidentielle_2017_Resultats_Département_T1_clean.csv")
+ele_17 <- ele_17[-(97:106),-(28:49)] # On enlève les colonnes inutiles et les départements d'outre-mer. 
 
+# Transformation pour déplacer deux lignes qui posent problème lors de la jointure
+ele_17_t <- as.data.frame(t(as.matrix(ele_17)))
+ele_17_t <- ele_17_t%>%
+  relocate(20,.after = 6)
+ele_17_t <- ele_17_t%>%
+  relocate(21,.before = 7)
+ele_17 <- as.data.frame(t(as.matrix(ele_17_t)))
+ele_17$Abstentions_ins <- as.numeric(ele_17$Abstentions_ins)
 
-### Some dynamic maps
+# Récupération des codes des départements pour le jeu de données de 2012.
+code_dep <- c(ele_17[,1])
+```
 
-```{r  ggplotly, echo = TRUE,  eval = TRUE,  message = FALSE, warning=FALSE}
-plotly::ggplotly(p1)
+```{r data 2012, include=FALSE}
+# importation du jeu de données pour 2017
+ele_12 <- read.csv("In/France-politique-2012.csv", sep=";")
+ele_12 <- ele_12[-(97:107),]# On enlève les départements d'outre-mer. 
+
+# Transformation pour déplacer deux lignes qui posent problème lors de la jointure
+ele_12_t <- as.data.frame(t(as.matrix(ele_12)))
+ele_12_t <- ele_12_t%>%
+  relocate(20,.after = 6)
+ele_12_t <- ele_12_t%>%
+  relocate(21,.before = 7)
+ele_12 <- as.data.frame(t(as.matrix(ele_12_t)))
+ele_12$Participation <- as.numeric(ele_12$Participation)
+
+# transformation pour obtenir l'abstention et les codes des départements
+ele_12 <- ele_12 %>%
+  mutate(code = code_dep)%>%
+  mutate(Abstention = 100-Participation)
+```
+
+```{r new data, include=FALSE}
+# Calcul de la différence entre 2012 et 2017 pour l'abstention
+diff_abst <- ele_17$Abstentions_ins-ele_12$Abstention
+
+#Création d'un nouveau jeu de données
+new_dta <- data.frame(code=code_dep, diff_abs = diff_abst)
+
+# Création de variables catégorielles
+new_dta <- new_dta %>%
+  mutate(Abst_cat = case_when(diff_abst < 0 ~ "diminution", 
+                        diff_abst > 2.5 ~ "augmentation",
+                        TRUE ~ "maintien ou faible augmentation"))
 ```
 
 
+```{r join, include=FALSE}
+# Jointure entre le nouveau jeu de données et le shapefile
+dta_dif <- dpt_shape %>% 
+  inner_join(y = new_dta, by = "code")
+```
+
+
+```{r crea carte1, include=FALSE}
+# Création du premier graphique
+cartedif <- dta_dif %>% 
+  ggplot2::ggplot() +
+  geom_sf(aes(fill= Abst_cat)) + #coloration des départements en fonction d'abstention
+  scale_fill_manual(values=list("augmentation" = "indianred2", 
+                                "maintien ou faible augmentation" = "gray88", 
+                                "diminution" = "darkseagreen2" ))+ # changement des couleurs de remplissage
+  labs(fill = "Évolution abstention")+ # changement du titre de la légende
+  theme_classic() + # thème sans grille
+  theme(axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank())+ # Suppression des axes et de leurs labels
+  ggtitle("Evolution de l'abstention aux élections \nprésidentielles entre 2012 et 2017")+ # ajout du titre
+  theme(plot.title=element_text( hjust=0.5, 
+                                 vjust=0.5, 
+                                 face='bold'))+ # Mise en forme du titre
+  annotate("rect", 
+           xmin=c(8.2,1.2,0.8), xmax=c(9.8,3.7,4.2),
+           ymin=c(41.2,48.1,45) , ymax=c(43.2,49.2,46.7),
+           alpha=0.2, color="black", fill="grey", size=1.5) # ajout de trois rectangles pour mettre en valeur certains éléments
+```
+
+Preview {data-icon="fa-signal"}
+===================================== 
+
+
+Column 1
+--------------------------------------------------
+
+### Chart A
+```{r}
+# affichage de la première carte
+plot(cartedif)
+```
+
+Column 2
+--------------------------------------------------
+
+### Chart B
+
+```{r}
+```
 
 ### Chart C
 
 ```{r}
-
 ```
 
+Observation initiale {data-icon="fa-signal"}
+=====================================     
+
+### Observation initiale
+    
+```{r graph1}
+# Affichage de la carte dans une page unique
+plot(cartedif)
+```
+
+Regression {data-icon="fa-signal"}
+=====================================      
+### Régression
+
+```{r}
+```
