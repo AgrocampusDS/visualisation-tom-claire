@@ -1,11 +1,8 @@
 library(openxlsx)
 library(stringi)
-library(gridExtra)
 library(sf)
 library(viridis)
 library(raster)
-library(cowplot)
-
 library(tidyverse)
 
 
@@ -33,7 +30,10 @@ abs2 <- abs2[-(97:107),]
 abs2 <- abs2 %>%
   mutate(Abstention = 100-Participation) %>% 
   select(1, Abstention) %>% 
-  rename(Dep=1)
+  rename(Dep=1) %>% 
+  mutate(Dep = replace(Dep, Dep == 'CORSE SUD', 'CORSE DU SUD')) %>% 
+  mutate(Dep = replace(Dep, Dep == 'SEINE SAINT-DENIS', 'SEINE SAINT DENIS'))
+  
 
 pauv2 <- read.xlsx('In/base-cc-filosofi-12.xlsx', sheet=4, startRow = 6)
 
@@ -95,17 +95,64 @@ plot3
 ## 3EME 
 
 pauv2018 <- read.csv('In/data_pauv_2018.csv', sep=';', encoding='UTF-8', skip=2)
+pauv2018 <- pauv2018 %>% 
+  mutate(Dep = str_to_upper(
+  stri_trans_general(
+    gsub('-',' ',Libellé), "Latin-ASCII"))) %>% 
+  rename(Pauvrete=Taux.de.pauvreté.2018) %>% 
+  slice(-c(97:101))%>% 
+  mutate(Annee=rep(2021,length(Dep))) %>% 
+  select(Annee, Dep, Pauvrete)
+
 
 dfbis <- df %>% 
   mutate(Dep = str_to_upper(
     stri_trans_general(
       gsub('-',' ',Département), "Latin-ASCII"))) %>% 
-  select(-Département)
+  select(-Département) %>% 
+  rename(Abstention=Abstentions_ins) %>% 
+  rename(Pauvrete=Taux.de.pauvreté) %>% 
+  mutate(Annee=rep(2017,length(Dep))) %>% 
+  select(Annee,Dep,Abstention,Pauvrete)
 
+df2 <- df2 %>%
+  mutate(Annee=rep(2012,length(Dep))) %>% 
+  select(Annee,Dep,Abstention,Pauvrete)
 
+df3 <- rbind(df2,dfbis)  
+summary(df3)
 
-df3 <- inner_join(dfbis, df2, by=c('Dep'='Dep'))
+df3$Annee <- as.numeric(df3$Annee)
+mod <- lm(Abstention~Pauvrete*Annee, data=df3)
+anova(mod)
 
-mod <- anova(data=df2)
+pauv2018$abs_pred <- predict(mod, newdata=pauv2018)
 
+# µ <- mod$coefficients[1]
+# beta <- mod$coefficients[2]
+# alpha2 <- mod$coefficients[3]
+# gamma3 <- mod$coefficients[3]*2
+  
+plot4 <- ggplot() +
+  
+  geom_smooth(data=df2, aes(x=Pauvrete, y=Abstention, col='2012'),
+              method='lm', se=F) +
+  
+  geom_smooth(data=df, aes(x=Taux.de.pauvreté, y=Abstentions_ins, col='2017'), 
+              method='lm', se=F) +
+  
+  geom_smooth(data=pauv2018, aes(x=Pauvrete, y=abs_pred, col='2022'),
+              method='lm', se=F) +
+  scale_color_manual(values=list('2012'='darkblue','2017'='darkorange',
+                                 '2022'='darkred')) +
+  
+  labs(x='Taux de pauvreté',
+       y="Taux d\'abstention aux élections",
+       col='Année',
+       title='Comparaison des relations taux de pauvreté - taux 
+       d\'abstention entre 2012 et 2017') +
+  
+  theme_light()
+  
+plot4  
 
