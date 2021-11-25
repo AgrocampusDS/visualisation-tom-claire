@@ -28,7 +28,6 @@ color:black!important;
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-
 ```{r lib, include=FALSE}
 library(flexdashboard)
 library(sf)
@@ -43,7 +42,8 @@ library(stringi)
 ```
 
 
-```{r, include=FALSE}
+
+```{r data dep, include=FALSE}
 # importation du shapefile des départements
 dpt_shape <-  st_read(dsn = 'In/contour-des-departements.geojson',
                       quiet=TRUE)
@@ -104,12 +104,10 @@ new_dta <- new_dta %>%
                         TRUE ~ "maintien ou faible augmentation"))
 ```
 
-
 ```{r data pauv 2017, include = FALSE}
 pauv_17 <- read.xlsx('In/pauvrete.xlsx')
 pauv_17 <- pauv_17[-(97:101),]
 ```
-
 
 ```{r data pauv 2012, include = FALSE}
 pauv_12 <- read.xlsx('In/base-cc-filosofi-12.xlsx', sheet=4, startRow = 6)
@@ -123,6 +121,22 @@ pauv_12 <- pauv_12 %>%
       gsub('-',' ',Département), "Latin-ASCII"))) %>% 
   select(-Département)
 ```
+
+```{r data pauv 2022 (2018), include = FALSE}
+pauv_18 <- read.csv('In/data_pauv_2018.csv', sep=';', encoding='UTF-8', skip=2)
+
+# On renomme la colonne contenant les départements et celle avec la pauvreté et on uniformise l'écriture.
+pauv_18 <- pauv_18 %>% 
+  mutate(Dep = str_to_upper(
+  stri_trans_general(
+    gsub('-',' ',Libellé), "Latin-ASCII"))) %>% 
+  rename(Pauvrete=Taux.de.pauvreté.2018) %>% 
+  slice(-c(97:101))%>% 
+  mutate(Annee=rep(2021,length(Dep))) %>% 
+  select(Annee, Dep, Pauvrete)
+```
+
+
 
 ```{r join, include=FALSE}
 # Jointure entre le nouveau jeu de données et le shapefile
@@ -151,8 +165,48 @@ dta_pauv_12 <- dta_pauv_12 %>%
                        'Seine-Saint_Denis'))
 ```
 
+```{r join 2, include = FALSE}
+# modification du fichier issu de la jointure 2017
+dta_pauv_17_bis <- dta_pauv_17 %>% 
+  mutate(Dep = str_to_upper(
+    stri_trans_general(
+      gsub('-',' ',Département), "Latin-ASCII"))) %>% 
+  select(-Département) %>% 
+  rename(Abstention=Abstentions_ins) %>% 
+  rename(Pauvrete=Taux.de.pauvreté) %>% 
+  mutate(Annee=rep(2017,length(Dep))) %>% 
+  select(Annee,Dep,Abstention,Pauvrete)
 
-```{r crea carte1, include=FALSE}
+# Modification fichier issu de la jointure 2012
+dta_pauv_12_bis <- dta_pauv_12 %>%
+  rename(Dep=Département) %>%
+  mutate(Annee=rep(2012,length(Dep))) %>% 
+  select(Annee,Dep,Abstention,Pauvrete)
+
+# Fusion des deux jointures modifiées
+dta_12_17 <- rbind(dta_pauv_12_bis, dta_pauv_17_bis)
+```
+
+
+
+```{r mod, include=FALSE}
+dta_12_17$Annee <- as.numeric(dta_12_17$Annee)
+
+# Modèle d'Analyse de la Covariance
+mod <- lm(Abstention~Pauvrete*Annee, data=dta_12_17)
+anova(mod)
+
+pauv_18$abs_pred <- predict(mod, newdata=pauv_18)
+
+# µ <- mod$coefficients[1]
+# beta <- mod$coefficients[2]
+# alpha2 <- mod$coefficients[3]
+# gamma3 <- mod$coefficients[3]*2
+```
+
+
+
+```{r crea carte plot 1, include=FALSE}
 # Création du premier graphique
 cartedif <- dta_dif %>% 
   ggplot2::ggplot() +
@@ -194,7 +248,7 @@ cartedif <- dta_dif %>%
   # Suppression des axes et de leurs labels
 ```
 
-```{r crea regression 1}
+```{r crea regression plot 2, include = FALSE}
 plot2 <- ggplot() +
   
   geom_point(data=dta_pauv_12, 
@@ -212,7 +266,7 @@ plot2 <- ggplot() +
   
   geom_text(data=dta_pauv_12 %>% 
               filter(Abstention>25), 
-            nudge_x=-2.2, 
+            nudge_x=-2.6, 
             size=3.5,
             aes(x=Pauvrete, 
                 y=Abstention, 
@@ -234,7 +288,7 @@ plot2 <- ggplot() +
   geom_text(data=dta_pauv_17 %>% 
               filter(Abstentions_ins>25, 
                                Taux.de.pauvreté<25), 
-            nudge_x=-1.8, 
+            nudge_x=-2.5, 
             size=3.5,
             aes(x=Taux.de.pauvreté, 
                 y=Abstentions_ins, 
@@ -244,7 +298,7 @@ plot2 <- ggplot() +
   geom_text(data=dta_pauv_17 %>% 
               filter(Abstentions_ins>25, 
                      Taux.de.pauvreté>25), 
-            nudge_x=-2.9,
+            nudge_x=-3,
             size=3.5,
             aes(x=Taux.de.pauvreté, 
                 y=Abstentions_ins, 
@@ -266,16 +320,56 @@ plot2 <- ggplot() +
   
 ```
 
+```{r crea prediction plot 3, include=FALSE}
+plot3 <- ggplot() +
+  
+  geom_smooth(data=dta_pauv_12, 
+              aes(x=Pauvrete, 
+                  y=Abstention, 
+                  col='2012'),
+              method='lm', 
+              se=F) +
+  
+  geom_smooth(data=dta_pauv_17, 
+              aes(x=Taux.de.pauvreté, 
+                  y=Abstentions_ins, 
+                  col='2017'), 
+              method='lm', 
+              se=F) +
+  
+  geom_smooth(data=pauv_18, 
+              aes(x=Pauvrete, 
+                  y=abs_pred, 
+                  col='2022'),
+              method='lm', 
+              se=F, size=2) +
+  
+  scale_color_manual(values=list('2012'='skyblue3',
+                                 '2017'='sienna1',
+                                 '2022'='red')) +
+  
+  labs(x='Taux de pauvreté',
+       y="Taux d\'abstention aux élections",
+       col='Année') +
+  
+  theme_light() + 
+  
+  ggtitle("Projection de la relation taux de pauvreté - taux \nd'abstention en 2022")+ # ajout du titre
+  theme(plot.title=element_text( hjust=0.5, 
+                                 vjust=0.5, 
+                                 face='bold')) # Mise en forme du titre
+  
+```
+
 
 Preview {data-icon="fa-signal"}
 ===================================== 
-
 
 Column 1
 --------------------------------------------------
 
 ### Etape 1
-```{r}
+```{r preview graph 1}
 # affichage de la première carte
 plot(cartedif)
 ```
@@ -285,13 +379,14 @@ Column 2
 
 ### Etape 2
 
-```{r}
+```{r preview graph 2}
 plot(plot2)
 ```
 
 ### Etape 3
 
-```{r}
+```{r preview graph 3}
+plot(plot3)
 ```
 
 Observation initiale {data-icon="fa-signal"}
@@ -299,7 +394,7 @@ Observation initiale {data-icon="fa-signal"}
 
 ### Observation initiale
     
-```{r graph1}
+```{r graph 1}
 # Affichage de la carte dans une page unique
 plot(cartedif)
 ```
@@ -308,7 +403,7 @@ Regression {data-icon="fa-signal"}
 =====================================      
 ### Régression
 
-```{r}
+```{r graph 2}
 plot(plot2)
 ```
 
@@ -316,3 +411,11 @@ Prédiction {data-icon="fa-signal"}
 =====================================     
 
 ### Prédiction
+
+```{r graph 3}
+plot(plot3)
+```
+
+
+
+
