@@ -4,6 +4,8 @@ library(sf)
 library(viridis)
 library(raster)
 library(tidyverse)
+library(sf)
+
 
 
 ### 2017
@@ -140,9 +142,11 @@ plot4 <- ggplot() +
   
   geom_smooth(data=df, aes(x=Taux.de.pauvreté, y=Abstentions_ins, col='2017'), 
               method='lm', se=F) +
+  geom_point(data=df, aes(x=Taux.de.pauvreté, y=Abstentions_ins, col='2017'))+
   
   geom_smooth(data=pauv2018, aes(x=Pauvrete, y=abs_pred, col='2022'),
               method='lm', se=F) +
+  geom_point(data=pauv2018, aes(x=Pauvrete, y=abs_pred, col='2022')) +
   scale_color_manual(values=list('2012'='darkblue','2017'='darkorange',
                                  '2022'='darkred')) +
   
@@ -154,5 +158,42 @@ plot4 <- ggplot() +
   
   theme_light()
   
-plot4  
+plot4
+
+#Carte
+
+contour <- st_read(dsn = 'In/contour-des-departements.geojson') %>% 
+  mutate(Dep = str_to_upper(
+  stri_trans_general(
+    gsub('-',' ',nom), "Latin-ASCII"))) %>% 
+  select(-nom)
+
+tmp <- inner_join(pauv2018, dfbis, by=c('Dep'='Dep')) %>% 
+  mutate(DiffAbs = abs_pred-Abstention) %>% 
+  mutate(AbsCat = case_when(DiffAbs < 0 ~ "diminution", 
+                              DiffAbs > 2.5 ~ "augmentation",
+                              TRUE ~ "maintien ou faible augmentation")) %>% 
+  select(Dep,DiffAbs, AbsCat)
+
+df5 <- inner_join(contour, tmp, by=c('Dep'='Dep')) 
+
+
+plot5 <- df5 %>% 
+  ggplot() +
+  geom_sf(aes(fill= AbsCat)) +
+  scale_fill_manual(values=list("augmentation" = "indianred2", 
+                                "maintien ou faible augmentation" = "gray88", 
+                                "diminution" = "darkseagreen2" ))+
+  labs(fill = "Évolution abstention")+
+  theme_classic() + 
+  theme(axis.line=element_blank(),axis.text.x=element_blank(),
+        axis.text.y=element_blank(),axis.ticks=element_blank())+
+  ggtitle("Evolution de l'abstention aux élections présidentielles entre 2017 et 2022")+
+  theme(plot.title=element_text( hjust=0.5, vjust=0.5, face='bold'))
+
+
+plot5
+
+
+
 
