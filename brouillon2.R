@@ -1,7 +1,13 @@
 library(openxlsx)
-library(tidyverse)
 library(stringi)
 library(gridExtra)
+library(sf)
+library(viridis)
+library(raster)
+library(cowplot)
+
+library(tidyverse)
+
 
 ### 2017
 abs <- read.csv('In/Presidentielle_2017_Resultats_Département_T1_clean.csv', 
@@ -16,18 +22,6 @@ pauv <- read.xlsx('In/pauvrete.xlsx')
 pauv <- pauv[-(97:101),]
 
 df <- inner_join(pauv, abs, by=c('Département'='Département'))
-
-mod <- lm(data=df, Abstentions_ins~Taux.de.pauvreté)
-summary(mod)
-
-plot <- ggplot(data=df, aes(x=Taux.de.pauvreté, y=Abstentions_ins)) +
-  geom_point() +
-  geom_smooth(method='lm') +
-  xlim(c(10,23)) +
-  ylim(c(10,35)) +
-  labs(x='Taux de pauvreté en 2017',
-       y="Taux d\'absentention aux élections de 2017")
-plot
 
 
 ## 2012
@@ -55,21 +49,63 @@ pauv2 <- pauv2 %>%
 
 df2 <- inner_join(abs2, pauv2, by=c('Dep'='Dep_formatted'))
 
-mod2 <- lm(data=df2, Abstention~Pauvrete)
-summary(mod2)
+df2 <- df2 %>% mutate(Dep = replace(Dep, Dep == 'HAUTE CORSE', 'Haute-Corse'))
 
-plot2 <- ggplot(data=df2, aes(x=Pauvrete, y=Abstention)) +
-  geom_point() +
-  geom_smooth(method='lm') +
-  xlim(c(10,23)) +
-  ylim(c(10,35)) +
-  labs(x='Taux de pauvreté en 2012',
-       y="Taux d\'absentention aux élections de 2012")
-plot2
+plot3 <- ggplot() +
+  
+  geom_point(data=df2, aes(x=Pauvrete, y=Abstention, col='2012')) +
+  geom_smooth(data=df2, aes(x=Pauvrete, y=Abstention, col='2012'),
+              method='lm', se=F) +
+  
+  geom_text(data=df2 %>% filter(Abstention>25),
+            # nudge_x=-2.3, 
+            size=3.5,
+            aes(x=Pauvrete, y=Abstention, label=Dep, col='2012')) +
+  
+  
+  geom_point(data=df, aes(x=Taux.de.pauvreté, y=Abstentions_ins, col='2017')) +
+  geom_smooth(data=df, aes(x=Taux.de.pauvreté, y=Abstentions_ins, col='2017'), 
+              method='lm', se=F) +
+  
+  geom_text(data=df %>% filter(Abstentions_ins>25, Taux.de.pauvreté<25), 
+            # nudge_x=-2.5, 
+            size=3.5,
+            aes(x=Taux.de.pauvreté, y=Abstentions_ins, 
+                label=Département, col='2017')) + 
+  
+  geom_text(data=df %>% filter(Abstentions_ins>25, Taux.de.pauvreté>25), 
+            # nudge_x=-3.3,
+            size=3.5,
+            aes(x=Taux.de.pauvreté, y=Abstentions_ins, 
+                label=Département, col='2017')) + 
+  
+  
+  scale_color_manual(values=list('2012'='darkblue','2017'='darkorange')) +
+  labs(x='Taux de pauvreté',
+       y="Taux d\'abstention aux élections",
+       col='Année',
+       title='Comparaison des relations taux de pauvreté - taux 
+       d\'abstention entre 2012 et 2017') +
+  
+  theme_light()
+
+plot3
+  
+
+## 3EME 
+
+pauv2018 <- read.csv('In/data_pauv_2018.csv', sep=';', encoding='UTF-8', skip=2)
+
+dfbis <- df %>% 
+  mutate(Dep = str_to_upper(
+    stri_trans_general(
+      gsub('-',' ',Département), "Latin-ASCII"))) %>% 
+  select(-Département)
 
 
-grid.arrange(plot,plot2, layout_matrix=rbind(c(1,2)))
 
-## 3ème graphe
+df3 <- inner_join(dfbis, df2, by=c('Dep'='Dep'))
+
+mod <- anova(data=df2)
 
 
