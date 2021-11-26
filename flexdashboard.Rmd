@@ -51,7 +51,7 @@ dpt_shape <-  st_read(dsn = 'In/contour-des-departements.geojson',
 
 ```{r data 2017, include=FALSE}
 # importation du jeu de données pour 2017
-ele_17 <- read.csv("In/Presidentielle_2017_Resultats_Département_T1_clean.csv", encoding = 'UTF-8')
+ele_17 <- read.csv("In/Presidentielle_2017_Resultats_Département_T1_clean.csv", encoding = 'UTF-8')
 ele_17 <- ele_17[-(97:106),-(28:49)] # On enlève les colonnes inutiles et les départements d'outre-mer. 
 
 # Transformation pour déplacer deux lignes qui posent problème lors de la jointure
